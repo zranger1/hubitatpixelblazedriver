@@ -124,7 +124,7 @@ def parse(String frame) {
    log.debug "JSON frame detected"
    json = null
    try {
-      json = new groovy.json.JsonSlurper().parseText(description)
+      json = new groovy.json.JsonSlurper().parseText(frame)
         if (json == null){
           log.debug "JsonSlurper failed (null result)"
 		  log.debug frame
