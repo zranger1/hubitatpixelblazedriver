@@ -28,8 +28,8 @@ minutes if a motion detector sees somebody coming downstairs in the middle of th
 
 In future versions, I plan to add child devices that can interact with particular patterns, i.e.
 breaking the strips into multiple zones and having each zone track the color of the nearest
-Hub bulb.  Or silly things like picking up sunset colors from a webcam in , or set the initial
-state of those cellular automata depending on where people are standing in the room...  
+Hub bulb.  Or silly things like picking up sunset colors from a webcam, or set the initial
+state of your cellular automata depending on where people are standing in the room...  
 
 # To Use
 ---------
@@ -45,7 +45,7 @@ Create a new virtual device on your Hubitat, name and label it, and select
 Click the new device on the Hubitat's "Devices" page, and enter your Pixelblaze's
 IP address in the provided field.  You will also need to enter the names of the 
 Pixelblaze patterns to use for the "On" and "Off" states.  You can use any pattern
-stored on your pixelblaze.
+stored on your Pixelblaze.
 
 For the "Off" pattern, I just wrote a quick pattern that does
 nothing when called to render pixels.  Like this:
