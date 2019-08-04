@@ -14,10 +14,11 @@
  *    Date        Ver			Who       What
  *    ----        ---     ---       ----
  *    2019-7-31   0.1			JEM       Created
+ *    2019-7-31   0.11			JEM       added SwitchLevel capability, JSON bug fixes
  *
  */
 
-def version() {"v0.1"}
+def version() {"v0.11"}
 
 import hubitat.helper.InterfaceUtils
 import hubitat.helper.HexUtils
@@ -25,14 +26,14 @@ import hubitat.helper.HexUtils
 metadata {
     definition (name: "Pixelblaze Controller", namespace: "jem", author: "JEM", importUrl: "") {
         capability "Switch"
+		capability "SwitchLevel"
 		capability "Initialize"
 
         command "setActivePattern", ["string"]
         command "setVariable", ["string","string"]
-		command "setBrightness",["number"]
         command "disconnect"
         command "reconnect"
-		command "getVariables"
+//		command "getVariables"
 		command "getPatterns"
     }
 }
@@ -48,7 +49,7 @@ preferences {
  * Required methods
  */
 def initialize() {
-    log.debug "initialize"
+    logDebug "initialize"
 	
 // reset all state variables, clear pattern map	
     state.version = version()
@@ -67,33 +68,41 @@ def initialize() {
 }
 
 def installed() {
-    log.debug "installed"
+    logDebug "installed"
     initialize()
 }
 
 def updated() {
-    log.debug "updated"
+    logDebug "updated"
     unschedule()  
     if (logEnable) runIn(1800,logsOff)
 	initialize()
 }
 
 def logsOff() {
-    log.debug "logsOff"
+    logDebug "logsOff"
     device.updateSetting("logEnable", [value: "false", type: "bool"])
+}
+
+def logDebug(String str) {
+  if (logEnable) { log.debug(str) }
 }
 
 /**
  * parse data returned from Pixelblaze's websocket interface
+ * NOTE - when you open the Pixelblaze's pattern editor in a browser,
+ * it generates a fairly constant stream of packets, which need to 
+ * be ignored as rapidly as possible so we don't bog down the Hubitat.
+ * Don't be surprised if you're debugging the driver while editing
+ * patterns and you see a lot of frames whiz by. 
  */ 
 def parse(String frame) {
-  log.debug "received frame from pixelblaze"
 
 // determine what kind of frame it is. Variable lists come in as JSON
 // strings, program lists are hexStrings, with a signature 0x07 as the 
 // first encoded byte.  
   if (frame.startsWith("07")) {
-      log.debug "Found program list binary frame"
+      logDebug "Found program list binary frame"
 
 // convert the data portion of the hex string to a normal string 
       def byte[] listFrame = hubitat.helper.HexUtils.hexStringToByteArray(frame)
@@ -102,11 +111,11 @@ def parse(String frame) {
 // since program listings can be spread across multiple frames, we need to check
 // for start and end frame tags, which are in the second decoded byte      
 	  if (listFrame[1] & 0x01) {  //look for 0x01 start frame indicator
-	    log.debug "Start Frame Detected"
+	    logDebug "Start Frame Detected"
   	    state.patternList = [ : ]	          
 	  }
 	  if (listFrame[1] & 0x04) { // look for 0x04 completion frame indicator
-	    log.debug "End Frame Detected"   
+	    logDebug "End Frame Detected"   
 	 } 
 	 // convert list entries into a map, indexed by pattern name
      def newMap = rawList.tokenize("\n").collectEntries {
@@ -114,20 +123,21 @@ def parse(String frame) {
      }
 	 state.patternList << newMap  
   }  
-  else {
-   // it is a json (string) frame containing variables or other info
+  else if (frame.startsWith("{\"vars\":")) {
+   // The frame contains exported variables 
+   // from the currently running pixelblaze pattern. 
    // TBD - initial version does nothing although it exposes
    // the getVariables command. Don't have a compelling driver
    // level use case atm. Seems like more an application thing,
    // unless I want the driver to start having a priori knowledge
    // of certain patterns wired in.  Need to think about it.
-   log.debug "JSON frame detected"
+   logDebug "JSON getVariables frame detected"
    json = null
    try {
       json = new groovy.json.JsonSlurper().parseText(frame)
         if (json == null){
-          log.debug "JsonSlurper failed (null result)"
-		  log.debug frame
+          logDebug "JsonSlurper failed (null result)"
+		  logDebug frame
           return
         } 
     }
@@ -136,7 +146,7 @@ def parse(String frame) {
 	   log.error frame
        return
     } 
-    log.debug json	// TBD - do something fun with this data!
+    logDebug json	// TBD - do something fun with this data!
   }
 }
 
@@ -147,7 +157,7 @@ def parse(String frame) {
  * but out in the real world, we need to be a bit more proactive about such things. 
  */
 def pbOpenSocket() {
-    log.debug "pbOpenSocket"
+    logDebug "pbOpenSocket"
 	
 	if (!state.isSocketOpen) {
         try {
@@ -160,12 +170,12 @@ def pbOpenSocket() {
 }
 
 def pbCloseSocket() {
-    log.debug "pbCloseSocket"
+    logDebug "pbCloseSocket"
 	interfaces.webSocket.close()
 }
 
 def sendMsg(String s) {
-    log.debug "sendMsg"
+    logDebug "sendMsg"
     if (state.isSocketOpen) {
       interfaces.webSocket.sendMessage(s)
 	}
@@ -175,11 +185,10 @@ def sendMsg(String s) {
  * Handler for message from the system websocket interface.  
  */
 def webSocketStatus(String status){
-    log.debug "webSocketStatus: ${status}"
+    log.info "webSocketStatus: ${status}"
 	
 	if (status == "status: open") {
         pauseExecution(1000)
-        state.reconnectDelay = 1
 		state.isSocketOpen = true
     } 
     else if (status == "status: closing") {
@@ -196,7 +205,7 @@ def webSocketStatus(String status){
  * pattern's ID string, or NULL if not found.
  */ 
 def getPatternId(String name) {
-    log.debug "getPatternId"
+    logDebug "getPatternId"
 	return state.patternList[name]
 }	
 
@@ -204,7 +213,7 @@ def getPatternId(String name) {
  * Command handlers
  */
 def setActivePattern(name) {
-   log.debug "setActivePattern(${name})"
+   logDebug "setActivePattern(${name})"
    
    def pid = getPatternId(name)
    def str = "{ \"activeProgramId\" : \"${pid}\" }"
@@ -220,44 +229,47 @@ def setVariable(name,value) {
 // with '#' are assumed to represent hexadecimal bytes and will
 // be converted accordingly, (3) everything else will be passed
 // on untouched, as a string.
-    log.debug "setVariable ${name},${value}"
+    logDebug "setVariable ${name},${value}"
     def str = "{ \"setVars\" : { \"${name}\" : ${value} } }"
     sendMsg(str)
 }
 
-def setBrightness(level) {
-// this is semi-undocumented in the current pixelblaze software
-// it may change without warning and stop working at some point.	
-    log.debug "setBrightness"
-	sendMsg("{ \"brightness\" : ${level} }" )
+def setLevel(BigDecimal level,BigDecimal duration=0) {
+// NOTE - duration is not currently supported,
+// and setting global brightness via this API is
+// semi-undocumented in the current pixelblaze software
+// it may change or stop working without warning.	
+    logDebug "setLevel"
+	def BigDecimal lev = level / 100   
+	sendMsg("{ \"brightness\" : ${lev} }" )
 }
 
 def getVariables() {
-    log.debug "getVariables"
+    logDebug "getVariables"
 	sendMsg("{ \"getVars\" : true }")
 }
 
 def getPatterns() {
-    log.debug "getPatterns"
+    logDebug "getPatterns"
 	sendMsg("{ \"listPrograms\" : true }")	
 }
 
 def on() {
-    log.debug "on"
+    logDebug "on"
 	setActivePattern(onPattern)
 }
 
 def off() {
-    log.debug "off"
+    logDebug "off"
 	setActivePattern(offPattern)
 }
 
 def disconnect() {
-    log.debug "disconnect"
+    logDebug "disconnect"
 	pbCloseSocket()	
 }
 
 def reconnect() {
-    log.debug "reconnect"
+    logDebug "reconnect"
 	initialize()	
 }
