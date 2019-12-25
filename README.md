@@ -64,7 +64,7 @@ all available patterns on a timer.
 The SetVariables command takes a json-formatted string composed of the names and values
 of variables exported by the currently active pattern.
  
-Here is Pixelblaze a pattern, which I have named "Alert", to let you experiment with
+Here is a Pixelblaze pattern, which I have named "Alert", to let you experiment with
 the feature:
 
 ```javascript
