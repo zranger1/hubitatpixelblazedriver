@@ -17,6 +17,7 @@
  *    2019-7-31   0.11          JEM       added SwitchLevel capability, JSON bug fixes
  *    2019-12-19  1.00          JEM       lazy connection strategy, auto reconnect, 
  *                                        auto pattern list refresh, new on/off method, more...
+ *    2020-02-05  1.01          JEM       support for latest Pixelblaze firmware features
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *  in compliance with the License. You may obtain a copy of the License at:
@@ -34,7 +35,7 @@ import hubitat.helper.HexUtils
 /**
  * Constants and configuration data
  */
-def version() {"v1.00"}
+def version() {"v1.01"}
 
 def idleWaitTime() { 60 } // seconds till connection goes idle
 def defaultBrightness() { 50 } // use this brightness if we can't determine device state.  
@@ -257,6 +258,21 @@ def parseVariableList(Map json) {
   }     
 }
 
+// process json activeProgram packet, new with latest (v2.18 or so)
+// pixelblaze firmware versions. 
+// TBD - add support for per-program controls
+def parseActiveProgram(Map json) {
+  if (json.containsKey("activeProgram")) {
+    logDebug("    found active program frame")
+    
+    id = json.activeProgram.activeProgramId   
+    name = patternNameFromId(id) 
+    logDebug("    active pattern is ${name}")
+      
+    sendEvent([name: "activePattern", value: name])        
+  }
+}
+
 // handle json text frames
 def parseJsonFrame(String frame) {
   logDebug("Received JSON frame:")
@@ -271,6 +287,7 @@ def parseJsonFrame(String frame) {
         return
       }     
     parseHardwareConfig(json)
+    parseActiveProgram(json)
     parseVariableList(json)
         
   }
@@ -458,6 +475,21 @@ def indexFromPatternName(pattern) {
   def name = (state.patternList?.keySet() as List)  
   if (name == null) return -1 
   return name.indexOf(pattern)   
+}
+
+def patternNameFromId(id) {
+  name = null
+ 
+  try {   
+    if ((state.patternList != null) && (id != null)) {
+      name = state.patternList.find { it.value == id }.key
+    }  
+  }
+  catch (e) {
+    logDebug("patternNameFromId - id not found")
+  }
+    
+  return (name != null) ? name : PATTERN_NOT_SET() 
 }
 
 def patternNameFromIndex(n) {
