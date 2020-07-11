@@ -293,6 +293,8 @@ def parseVariableList(Map json) {
         seg.updateDataValue("brightness", status[3].toString())
         seg.updateDataValue("effect",status[4].toString())
         seg.updateDataValue("size", status[5].toString())
+        
+        seg.updateState(seg)
     }  
   }      
 }     
@@ -315,7 +317,7 @@ def parseActiveProgram(Map json) {
 // handle json text frames
 def parseJsonFrame(String frame) {
   logDebug("Received JSON frame:")
-  logDebug(frame)
+//logDebug(frame)  
      
   json = null
    

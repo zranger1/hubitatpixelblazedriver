@@ -13,6 +13,7 @@
  *    Date        Ver           Who       What
  *    ----        ---           ---       ----
  *    2020-3-30   0.1a          JEM       Created
+ *    2020-7-11   0.2a          JEM       Status update improvements
 
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -34,9 +35,28 @@ import groovy.json.JsonOutput
 /**
  * Constants and configuration data
  */
- 
-def version() {"v.01a"}
+import groovy.transform.Field
 
+@Field static List lightEffects = [
+    "none",
+    "Effect1",
+    "Effect2",
+    "Effect3",
+    "Effect4",
+    "Effect5",
+    "Effect6",
+    "Effect7",
+    "Effect8",
+    "Effect9",
+    "Effect10",
+    "Effect11",
+    "Effect12",
+    "Effect13",
+    "Effect14",
+    "Effect15",
+]
+ 
+def version() {"v.02a"}
 
 metadata {
     definition (name: "Pixelblaze Segment", namespace: "jem", author: "JEM",importUrl: "") {
@@ -44,13 +64,13 @@ metadata {
         capability "LightEffects"
         capability "Switch"
         capability "SwitchLevel"
-        capability "Refresh"
         capability "ColorControl"  
         
         command     "setSize",["number"]
+//        command     "updateState"
         
         attribute  "effectNumber","number"
-        attribute  "pixels", "number"
+        attribute  "segmentSize", "number"
     }
 }
 
@@ -115,13 +135,16 @@ def installed(){
 }
 
 def updated() {
-    log.info "Pixelblaze segment driver ${version()}-${device.deviceNetworkId} updated."
+    log.info "Pixelblaze segment driver ${version()} id:${device.deviceNetworkId} updated."
+    initialize()
 }
 
 def initialize() {
   state.version = version()
+  
+  def eff = new groovy.json.JsonBuilder(lightEffects)    
+  sendEvent(name:"lightEffects",value: eff)    
 }
-
 
 // handle command responses & status updates from bulb 
 def parse(String description) {
@@ -132,12 +155,40 @@ def parse(String description) {
  * Command handlers and associated helper functions
  */
  
+// called by parent when it gets an update from the pixelblaze 
+def updateState(dev) {
+  def tmpStr, tmpVal
+  
+// on/off state
+  tmpStr = (dev.getDataValue("state") == "1") ? "on" : "off"
+  sendEvent([name: "switch", value: tmpStr])  
+
+// color & brightness
+  tmpVal = Math.floor(100.0 * dev.getDataValue("hue").toFloat())
+  sendEvent([name: "hue", value: tmpVal])     
+  
+  tmpVal = Math.floor(100.0 * dev.getDataValue("saturation").toFloat())
+  sendEvent([name: "saturation", value: tmpVal])     
+  
+  tmpVal = Math.floor(100.0 * dev.getDataValue("brightness").toFloat())
+  sendEvent([name: "level", value: tmpVal])     
+  
+// effect
+  tmpVal = dev.getDataValue("effect")
+  sendEvent([name:"effectNumber", value: tmpVal])    
+  
+// segment size
+  tmpVal = dev.getDataValue("size")
+  sendEvent([name:"segmentSize", value: tmpVal])    
+}
+ 
+ 
 // Switch commands 
 def on() {   
     device.updateDataValue("state","1")
     doPixelblazeCommand()
-        
-    sendEvent([name: "switch", value: "on"])   
+    
+   sendEvent([name: "switch", value: "on"])     
 }
 
 def off() {
@@ -213,30 +264,36 @@ def setSize(BigDecimal s) {
   doPixelblazeCommand()
 }
 
-
 // LightEffects commands
-def  setEffect(effectNo) {
-  logDebug("setEffect to ${effectNo}- Not yet implemented.")
+def setEffect(BigDecimal effectNo) {
+
+// clamp to integer range of available effects
+  def val = effectNo.toInteger()
+  val = (val > 0) ? ((val < lightEffects.size()) ? val : lightEffects.size()) : 0;
+
+  logDebug("setEffect to ${effectNo}.")
+    
+  def name = lightEffects[val]
+  
+  device.updateDataValue("effect",val.toString());
+  sendEvent([name:"effectNumber", value:val])
+  sendEvent([name:"effectName", value:name])      
 }
 
 def setNextEffect() {
-  logDebug("setNextEffect")
-  setEffect(0)
+  
+  def i = device.getDataValue("effect").toFloat() 
+  if (++i >= lightEffects.size()) i = 1
+  
+  setEffect(i) 
 }
       
 def setPreviousEffect() {
-  logDebug("setPreviousEffect")
-  setEffect(0)
-}
-
-// Additional color helper functions 
-
-def getDeviceColor() {
-  def hsv = [hue: device.getDataValue("hue").toInteger(),
-         saturation: device.getDataValue("saturation").toInteger(),
-         level: device.getDataValue("brightness").toInteger()]
-        
-  return hsv
+  
+  def i = device.getDataValue("effect").toFloat() 
+  if (--i < 0) i = ((lightEffects.size() - 1)) 
+  
+  setEffect(i)  
 }
 
 // A very rough approximation, based on empirical observation
