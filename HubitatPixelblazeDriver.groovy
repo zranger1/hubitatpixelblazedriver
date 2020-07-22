@@ -1,6 +1,6 @@
 /**
  *
- *  File: HubitatPixelblazeDriver
+ *  File: HubitatPixelblazeDriver.groovy
  *  Platform: Hubitat
  *
  *  Allows hubitat to control a Pixelblaze addressable LED controller. 
@@ -15,9 +15,10 @@
  *    ----        ---           ---       ----
  *    2019-7-31   0.1           JEM       Created
  *    2019-7-31   0.11          JEM       added SwitchLevel capability, JSON bug fixes
- *    2019-12-19  1.00          JEM       lazy connection strategy, auto reconnect, 
+ *    2019-12-19  1.0.0         JEM       lazy connection strategy, auto reconnect, 
  *                                        auto pattern list refresh, new on/off method, more...
- *    2020-02-05  1.01          JEM       support for latest Pixelblaze firmware features
+ *    2020-02-05  1.0.1         JEM       support for latest Pixelblaze firmware features
+ *    2020-07-22  1.1.1         JEM       support for dividing strip into multiple segments 
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *  in compliance with the License. You may obtain a copy of the License at:
@@ -35,9 +36,9 @@ import hubitat.helper.HexUtils
 /**
  * Constants and configuration data
  */
-def version() {"v1.01"}
+def version() {"1.1.1"}
 
-def idleWaitTime() { 60 } // seconds till connection goes idle
+def idleWaitTime() { 120 } // seconds till connection goes idle
 def defaultBrightness() { 50 } // use this brightness if we can't determine device state.  
 
 def PATTERN_NOT_SET() { "(unknown)" } 
@@ -62,6 +63,8 @@ metadata {
         command "previousPattern"
         command "stopSequencer"
         command "setSequenceTimer",["number"]
+        command "resetChildren"
+        command "getVariables"
 
         attribute "connectionStatus","string"
         attribute "activePattern","string"
@@ -70,7 +73,7 @@ metadata {
 
 preferences {
     input("ip", "text", title: "IP Address", description: "IP address of Pixelblaze, including port #", required: true)
-    input name: "switchWithPatterns", type: "bool", title: "Use Patterns for On/Off", defaultValue : true    
+    input name: "switchWithPatterns", type: "bool", title: "Use Patterns for On/Off", defaultValue : false   
     input("onPattern", "text", title: "On Pattern", description: "Name of pattern to use with \"On\" command", required : false)
     input("offPattern", "text", title: "Off Pattern", description: "Name of pattern to use with \"Off\" command", required : false)
     input name: "logEnable", type: "bool", title: "Enable debug logging", defaultValue: false
@@ -91,12 +94,12 @@ def logDebug(String str) {
  * initialization 
  */ 
 def installed(){
-    log.info "Pixelblaze device handler ${version()} installed."       
+    log.info "Pixelblaze device handler v${version()} installed."       
     initialize()
 }
 
 def updated() {
-    log.info "Pixelblaze handler updated. ${version()}."
+    log.info "Pixelblaze handler updated. v${version()}."
     initialize()
 }
 
@@ -109,6 +112,9 @@ def initialize() {
     state.version = version()
     state.patternList = [ : ]
     state.lastSocketCall = now()
+    
+    device.updateDataValue("segments","0")
+    
     sendEvent([name: "connectionStatus", value: WS_DISCONNECTED()])
     sendEvent([name: "activePattern", value: PATTERN_NOT_SET()])
     sendEvent([name: "level", value: defaultBrightness()])     
@@ -118,7 +124,7 @@ def initialize() {
       logDebug("initialize:  ip address not set.")
       return
     }
-  
+    
     runInMillis(1000,pbOpenSocket)
     runInMillis(1500,awaitConnection,[data: "initializePostConnection"])   
 }
@@ -130,11 +136,14 @@ def initializePostConnection() {
     logDebug("initializePostConnection")
 
     getConfig()
-    runInMillis(500,getPatterns)    
+    runInMillis(150,getVariables)      
+    runInMillis(500,getPatterns) 
+  
     runInMillis(1500,on)
    
     runEvery1Minute(DisconnectInactive)    
     runEvery30Minutes(getConfig)
+    runEvery30Minutes(getVariables)
     runEvery1Hour(getPatterns) 
 }
 
@@ -143,11 +152,14 @@ def initializePostConnection() {
  */
 def isConnected() {
   try {
-    status = device.currentValue("connectionStatus")
-    return (status.startsWith(WS_CONNECTED()))
+    def status = device.currentValue("connectionStatus")
+    def res = status.startsWith(WS_CONNECTED())
+    logDebug("isConnected returning ${res}")
+    
+    return res
   }  
   catch(e) {
-    // handles connectionStatus attribute not yet initialized
+    // handles uninitialized connection status attribute
     return false
   }  
 }
@@ -250,13 +262,38 @@ def parseHardwareConfig(Map json) {
 // process json-ized list of exported variables from the pixelblaze.
 // TBD - not yet implemented
 def parseVariableList(Map json) {
+  def i, status, segList
 
   if (json.containsKey("vars")) {
-    logDebug("    found variable list frame")  
-// TBD - use pixelblaze pattern variables to control color,
-// animation speed and effects.     
-  }     
-}
+    logDebug("    found variable list.")
+
+// does the list specify multiple segments?    
+    if (json.vars.containsKey("__n_segments")) {
+       device.updateDataValue("segments",json.vars.__n_segments.toString())
+    }  
+    else {
+      return;
+    }
+          
+// try to get a segment description for each child device          
+    segList = getChildDevices()
+    for (i = 0; i < segList.size(); i++) { 
+        status = json.vars."z_${i}"
+        logDebug("   segment z_${i} : ${status}")
+         
+        seg = segList[i]
+        seg.updateDataValue("state",status[0].toString())
+        seg.updateDataValue("hue",status[1].toString())        
+        seg.updateDataValue("saturation", status[2].toString())
+        seg.updateDataValue("brightness", status[3].toString())
+        seg.updateDataValue("effect",status[4].toString())
+        seg.updateDataValue("size", status[5].toString())
+        seg.updateDataValue("speed",status[6].toString())
+        
+        seg.updateState(seg)
+    }  
+  }      
+}     
 
 // process json activeProgram packet, new with latest (v2.18 or so)
 // pixelblaze firmware versions. 
@@ -276,7 +313,7 @@ def parseActiveProgram(Map json) {
 // handle json text frames
 def parseJsonFrame(String frame) {
   logDebug("Received JSON frame:")
-  logDebug(frame)
+//logDebug(frame)  
      
   json = null
    
@@ -352,6 +389,39 @@ def parse(String frame) {
 /**
  * Command handlers and associated helper functions
  */
+
+
+// helper function - delete all children
+private removeChildDevices(kids) {
+	kids.each {deleteChildDevice(it.deviceNetworkId)}
+} 
+ 
+// remove current children and replace them according to the
+// current number of segments reported by the pixelblaze.
+// NOTE: Don't press this button until you're actually connected
+// to your pixelblaze and have the proper pattern running.
+def resetChildren() {
+  def i,lstring,segs
+
+  removeChildDevices(getChildDevices())
+  logDebug("resetChildren - removing all child devices")
+
+  if (isConnected()) {
+    segs = device.getDataValue("segments").toInteger()  
+    logDebug("  adding devices for ${segs} segments")
+  
+    for (i = 0; i < segs; i++) {
+      lstring = device.getLabel() + " Segment " + i.toString()
+      
+      addChildDevice("Pixelblaze Segment", "${device.id}-${i}",
+         	    		[label: lstring, 
+                    	 isComponent: false, 
+                         name: "Pixelblaze Segment ${i}"])    
+    
+    }      
+    runInMillis(400,getVariables)
+  }
+}
  
 def getConfig() {
     sendMsg("{ \"getConfig\" : true }")    
@@ -389,7 +459,7 @@ def setActivePattern(name) {
 // of variables exported in the currently active pattern.
 // see readme.md and the Pixelblaze expression documentation
 // for details.
-def setVariables(jsonString) {
+def setVariables(String jsonString) {
     logDebug "setVariables ${jsonString}"
     def str = "{ \"setVars\" : ${jsonString}}"
     sendMsg(str)

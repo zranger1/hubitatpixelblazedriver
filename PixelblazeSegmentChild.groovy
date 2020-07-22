@@ -13,7 +13,7 @@
  *    Date        Ver           Who       What
  *    ----        ---           ---       ----
  *    2020-3-30   0.1a          JEM       Created
- *    2020-7-11   0.2a          JEM       Status update improvements
+ *    2020-7-22   1.1.1         JEM       Status update improvements
 
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -39,24 +39,20 @@ import groovy.transform.Field
 
 @Field static List lightEffects = [
     "none",
-    "Effect1",
-    "Effect2",
-    "Effect3",
-    "Effect4",
-    "Effect5",
-    "Effect6",
-    "Effect7",
-    "Effect8",
-    "Effect9",
-    "Effect10",
-    "Effect11",
-    "Effect12",
-    "Effect13",
-    "Effect14",
-    "Effect15",
+    "Glitter",
+    "Rainbow Bounce",
+    "KITT",
+    "Breathe",
+    "Slow Color",
+    "Snow",
+    "Chaser Up",
+    "Chaser Down",
+    "Strobe",
+    "Random Wipe",
+    "Springy Theater",
 ]
  
-def version() {"v.02a"}
+def version() {"1.1.1"}
 
 metadata {
     definition (name: "Pixelblaze Segment", namespace: "jem", author: "JEM",importUrl: "") {
@@ -65,17 +61,17 @@ metadata {
         capability "Switch"
         capability "SwitchLevel"
         capability "ColorControl"  
-        
-        command     "setSize",["number"]
-//        command     "updateState"
-        
+
+        command    "setSize",["number"]
+        command    "setEffectSpeed", [[name: "Effect speed*", type: "NUMBER", description: "(0 to 200)", constraints:[]]]                  
         attribute  "effectNumber","number"
+        attribute  "effectSpeed", "number" 
         attribute  "segmentSize", "number"
     }
 }
 
 preferences {
-    input name: "logEnable", type: "bool", title: "Enable debug logging", defaultValue: true      
+    input name: "logEnable", type: "bool", title: "Enable debug logging", defaultValue: false      
 }
 
 /**
@@ -97,7 +93,7 @@ def getSegmentIndex() {
 // retrieve the current control state of the segment index in
 // the floating point array form Pixelblaze wants.
 def getSegmentStateArray() {
-  def keys = ["state","hue","saturation","brightness","effect","size"]
+  def keys = ["state","hue","saturation","brightness","effect","size","speed"]
   def result = new BigDecimal[keys.size()]
   
   for (def i = 0; i < keys.size(); i++) {
@@ -131,7 +127,8 @@ def installed(){
     device.updateDataValue("saturation","1")
     device.updateDataValue("brightness", "0.8")
     device.updateDataValue("effect","0")
-    device.updateDataValue("size", "0")        
+    device.updateDataValue("size", "0") 
+    device.updateDataValue("speed","1")    
 }
 
 def updated() {
@@ -179,9 +176,13 @@ def updateState(dev) {
   
 // segment size
   tmpVal = dev.getDataValue("size")
-  sendEvent([name:"segmentSize", value: tmpVal])    
-}
+  sendEvent([name:"segmentSize", value: tmpVal])   
+
+// effect speed
+  tmpVal = Math.floor( 100 * dev.getDataValue("speed").toFloat())
+  sendEvent([name:"effectSpeed", value: tmpVal])   
  
+}
  
 // Switch commands 
 def on() {   
@@ -249,7 +250,7 @@ def setLevel(BigDecimal lev,BigDecimal duration=0) {
 }
 
 // set segment size -- NOTE: This performs minimal
-// error checking in this version.  Use wisely.
+// error checking.  Use with care.
 // With great power, comes... well, you know.
 def setSize(BigDecimal s) {
   
@@ -269,66 +270,40 @@ def setEffect(BigDecimal effectNo) {
 
 // clamp to integer range of available effects
   def val = effectNo.toInteger()
-  val = (val > 0) ? ((val < lightEffects.size()) ? val : lightEffects.size()) : 0;
+  val = (val > 0) ? Math.min(val,lightEffects.size() - 1) : 0
 
   logDebug("setEffect to ${effectNo}.")
     
   def name = lightEffects[val]
   
-  device.updateDataValue("effect",val.toString());
+  device.updateDataValue("effect",val.toString())
+  doPixelblazeCommand()
   sendEvent([name:"effectNumber", value:val])
   sendEvent([name:"effectName", value:name])      
 }
 
 def setNextEffect() {
-  
   def i = device.getDataValue("effect").toFloat() 
   if (++i >= lightEffects.size()) i = 1
   
   setEffect(i) 
 }
       
-def setPreviousEffect() {
-  
+def setPreviousEffect() { 
   def i = device.getDataValue("effect").toFloat() 
   if (--i < 0) i = ((lightEffects.size() - 1)) 
   
   setEffect(i)  
 }
 
-// A very rough approximation, based on empirical observation
-def setGenericColorName(hsv){
-    def colorName = "(not set)"
-    
-    if (hsv.saturation < 17) {
-      colorName = "White"
-    }
-    else {
-      switch (hsv.hue.toInteger()){
-          case 0..2: colorName = "Red"
-              break
-          case 3..6: colorName = "Orange"
-              break
-          case 7..10: colorName = "Yellow"
-              break
-          case 11..13: colorName = "Chartreuse"
-              break
-          case 14..34: colorName = "Green"
-              break
-          case 35..68: colorName = "Blue"
-              break
-          case 69..73: colorName = "Violet"
-              break
-          case 74..83: colorName = "Magenta"
-              break
-          case 84..98: colorName = "Pink"
-              break
-          case 99..100: colorName = "Red"
-              break
-        }
-    }
-    
-    sendEvent(name: "colorName", value: colorName)
+def setEffectSpeed(BigDecimal speed) {
+  speed = (speed > 0) ? Math.min(speed.toFloat(),200.0) : 0
+  logDebug("setEffectSpeed to ${speed}")
+  
+  def deviceSpeed = Math.max(0.005,(200 - speed) / 100.0)
+  device.updateDataValue("speed",deviceSpeed.toString())
+  doPixelblazeCommand()  
+  sendEvent([name: "effectSpeed", value: speed])     
 }
 
 
