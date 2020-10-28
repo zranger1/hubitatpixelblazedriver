@@ -57,6 +57,11 @@ Per segment special effects are supported.  The twelve effects initially include
 10. **Random Wipe** - random color wipe
 11. **Springy Theater** - theater style chaser lights that also change distance.
 
+**New:** If you're using multisegment with a home automation system, the Pixelblaze Web UI sliders may interfere with
+your setup.  So as of multisegment v1.0.2, there is a variable in the pattern that allows you to completely
+disable the sliders once you've got things set up.  It's ```useSliderUI``` around line
+80.  Set it to 0 to disable sliders, to 1 to enable them.
+
 For more information, see the README.md for patterns in https://github.com/zranger1/PixelblazePatterns
 
 
