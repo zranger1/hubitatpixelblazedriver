@@ -1,0 +1,23 @@
+{
+  "packageName": "HubitatPixelblazeDriver",
+  "author": "ZRanger1(JEM)",
+  "version": "1.1.3",
+  "minimumHEVersion": "2.1.9",
+  "dateReleased": "2020-12-05",
+  "drivers": [
+    {
+      "id": "e6eabcc3-4644-480d-8032-a0be9a707be3",
+      "name": "Pixelblaze Controller",
+      "namespace": "ZRanger1",
+      "location": "https://raw.githubusercontent.com/zranger1/hubitatpixelblazedriver/master/HubitatPixelblazeDriver.groovy",
+      "required": true
+    },
+    {
+      "id": "77f6a930-d828-423f-8c3e-0117452aaff0",
+      "name": "Pixelblaze Segment",
+      "namespace": "ZRanger1",
+      "location": "https://raw.githubusercontent.com/zranger1/hubitatpixelblazedriver/master/PixelblazeSegmentChild.groovy",
+      "required": true
+    }
+  ]
+}
