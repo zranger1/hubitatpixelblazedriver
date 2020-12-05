@@ -12,9 +12,9 @@
  *
  *    Date        Ver           Who       What
  *    ----        ---           ---       ----
- *    2020-3-30   0.1a          JEM       Created
- *    2020-7-22   1.1.1         JEM       Status update improvements
-
+ *    2020-03-30   0.1a          JEM       Created
+ *    2020-07-22   1.1.1         JEM       Status update improvements
+ *    2020-12-05   1.1.3         JEM       Hubitat Package Manager Support/resync version w/main driver
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *  in compliance with the License. You may obtain a copy of the License at:
@@ -52,10 +52,13 @@ import groovy.transform.Field
     "Springy Theater",
 ]
  
-def version() {"1.1.1"}
+def version() {"1.1.3"}
 
 metadata {
-    definition (name: "Pixelblaze Segment", namespace: "jem", author: "JEM",importUrl: "") {
+    definition (name: "Pixelblaze Segment",
+                namespace: "ZRanger1",
+                author: "ZRanger1(JEM)",
+                importUrl: "https://raw.githubusercontent.com/zranger1/hubitatpixelblazedriver/master/PixelblazeSegmentChild.groovy") {
         capability "Actuator"
         capability "LightEffects"
         capability "Switch"

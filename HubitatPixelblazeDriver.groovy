@@ -19,6 +19,7 @@
  *                                        auto pattern list refresh, new on/off method, more...
  *    2020-02-05  1.0.1         JEM       support for latest Pixelblaze firmware features
  *    2020-07-22  1.1.1         JEM       support for dividing strip into multiple segments 
+ *    2020-12-05  1.1.3         JEM       Hubitat Package Manager support
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *  in compliance with the License. You may obtain a copy of the License at:
@@ -36,7 +37,7 @@ import hubitat.helper.HexUtils
 /**
  * Constants and configuration data
  */
-def version() {"1.1.1"}
+def version() {"1.1.3"}
 
 def idleWaitTime() { 120 } // seconds till connection goes idle
 def defaultBrightness() { 50 } // use this brightness if we can't determine device state.  
@@ -49,7 +50,10 @@ def WS_DISCONNECTED() { "not connected" }
 def WS_WAITING() { "waiting" }
 
 metadata {
-    definition (name: "Pixelblaze Controller", namespace: "jem", author: "JEM", importUrl: "") {
+    definition (name: "Pixelblaze Controller",
+                namespace: "ZRanger1",
+                author: "ZRanger1(JEM)",
+                importUrl: "https://raw.githubusercontent.com/zranger1/hubitatpixelblazedriver/master/HubitatPixelblazeDriver.groovy") {
         capability "Switch"
         capability "SwitchLevel"
         capability "Initialize"
