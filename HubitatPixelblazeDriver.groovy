@@ -17,7 +17,7 @@
  *    2020-02-05  1.0.1   JEM       support for latest Pixelblaze firmware features
  *    2020-07-22  1.1.1   JEM       support for dividing strip into multiple segments 
  *    2020-12-05  1.1.3   JEM       Hubitat Package Manager support
- *    2021-02-02  2.0.0   JEM       v2 release: Color control/enhanced multisegment support
+ *    2021-02-02  2.0.1   JEM       v2 release: Color control/enhanced multisegment support
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *  in compliance with the License. You may obtain a copy of the License at:
@@ -35,7 +35,7 @@ import hubitat.helper.HexUtils
 /**
  * SECTION TAG: Constants and configuration data
  */
-def version() {"2.0.0"}
+def version() {"2.0.1"}
 
 def PORT() { ":81" }            // Pixelblaze's websocket port. Must include colon
 def idleWaitTime() { 120}       // minimum seconds till connection goes idle
@@ -50,7 +50,7 @@ def WS_DISCONNECTED() { "not connected" }
 def WS_WAITING() { "waiting" }
 
 metadata {
-    definition (name: "Pixelblaze Controller X",
+    definition (name: "Pixelblaze Controller",
                 namespace: "ZRanger1",
                 author: "ZRanger1(JEM)",
                 importUrl: "https://raw.githubusercontent.com/zranger1/hubitatpixelblazedriver/master/HubitatPixelblazeDriver.groovy") {
