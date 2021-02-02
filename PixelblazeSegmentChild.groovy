@@ -15,6 +15,7 @@
  *    2020-03-30   0.1a          JEM       Created
  *    2020-07-22   1.1.1         JEM       Status update improvements
  *    2020-12-05   1.1.3         JEM       Hubitat Package Manager Support/resync version w/main driver
+ *    2021-02-02   2.0.0         JEM       Segment data now stored in main hub Pixelblaze driver
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *  in compliance with the License. You may obtain a copy of the License at:
@@ -37,22 +38,30 @@ import groovy.json.JsonOutput
  */
 import groovy.transform.Field
 
-@Field static List lightEffects = [
-    "none",
-    "Glitter",
-    "Rainbow Bounce",
-    "KITT",
-    "Breathe",
-    "Slow Color",
-    "Snow",
-    "Chaser Up",
-    "Chaser Down",
-    "Strobe",
-    "Random Wipe",
-    "Springy Theater",
+@Field static Map lightEffects = [
+    0:"none",
+    1:"Glitter",
+    2:"Rainbow Bounce",
+    3:"KITT",
+    4:"Breathe",
+    5:"Slow Color",
+    6:"Snow",
+    7:"Chaser Up",
+    8:"Chaser Down",
+    9:"Strobe",
+   10:"Random Wipe Up",
+   11:"Random Wipe Down", 
+   12:"Springy Theater",
+   13:"Color Twinkles",
+   14:"Plasma",
+   15:"Ripples",
+   16:"Spin Cycle",
+   17:"Rainbow Up",
+   18:"Rainbow Down",
 ]
  
-def version() {"1.1.3"}
+def version() {"2.0.0"}
+def segmentDescriptorSize() { 7 }
 
 metadata {
     definition (name: "Pixelblaze Segment",
@@ -60,6 +69,7 @@ metadata {
                 author: "ZRanger1(JEM)",
                 importUrl: "https://raw.githubusercontent.com/zranger1/hubitatpixelblazedriver/master/PixelblazeSegmentChild.groovy") {
         capability "Actuator"
+        capability "Initialize"
         capability "LightEffects"
         capability "Switch"
         capability "SwitchLevel"
@@ -84,66 +94,86 @@ def logDebug(String str) {
   if (logEnable) { log.debug(str) }
 }
 
-
 /**
  * helpers for building json command strings
- */
-def getSegmentIndex() {
-  def str = device.deviceNetworkId.split('-')
-  return str[1].toInteger() 
+ */ 
+// returns the Pixelblaze segment index for the segment
+// associated with this child
+def Integer getSegmentId() {   
+    return (device.deviceNetworkId.split('-')[1]).toInteger()
 }
 
-// retrieve the current control state of the segment index in
-// the floating point array form Pixelblaze wants.
-def getSegmentStateArray() {
-  def keys = ["state","hue","saturation","brightness","effect","size","speed"]
-  def result = new BigDecimal[keys.size()]
-  
-  for (def i = 0; i < keys.size(); i++) {
-    result[i] = new BigDecimal(device.getDataValue(keys[i]))
-  }
-  
-  return result  
+// get the current state of this segment from the master driver
+def getSegmentData() {
+  segNo = getSegmentId()
+  return getParent().getSegmentData(segNo)
 }
 
-// Send the currently stored segment data to the pixelblaze
-def doPixelblazeCommand() {
-  def i = getSegmentIndex()
-  def m = getSegmentStateArray()    
-  def cmd = JsonOutput.toJson("z_${i}":m) + "}" 
+// save segment descriptor map to master driver's database
+def saveSegmentData(Map segmentData) {
+  segNo = getSegmentId()
+  getParent().setSegmentData(segNo,segmentData)
+}
+
+// retrieve the segment's state information from the master driver's database,
+// and set both the segment driver and the pixelblaze to reflect it.
+def updateDriverState() {
+    def tmpStr, tmpVal
+    segData = getSegmentData()
+     
+// on/off state
+  tmpStr = (segData["state"]) ? "on" : "off"
+  sendEvent([name: "switch", value: tmpStr])  
+
+// color & brightness
+  tmpVal = Math.floor(100.0 * segData["hue"])
+  sendEvent([name: "hue", value: tmpVal])     
   
-  getParent().setVariables(cmd) 
+  tmpVal = Math.floor(100.0 * segData["sat"])
+  sendEvent([name: "saturation", value: tmpVal])     
+  
+  tmpVal = Math.floor(100.0 * segData["bri"])
+  sendEvent([name: "level", value: tmpVal])     
+  
+// effect
+  tmpVal = Math.floor(segData["effect"])
+  sendEvent([name:"effectNumber", value: tmpVal])    
+  
+// segment size
+  tmpVal = Math.floor(segData["size"])
+  sendEvent([name:"segmentSize", value: tmpVal])   
+
+// effect speed 
+  tmpVal = Math.floor(200 * segData["speed"])
+  sendEvent([name:"effectSpeed", value: tmpVal]) 
+    
+  saveSegmentData(segData)  
 }
 
 /**
  * initialization & configuration
  */ 
 def installed(){
-    log.info "Pixelblaze Segment driver ${version()} id:${device.deviceNetworkId} installed."  
+    log.info "Pixelblaze Segment Driver ${version()} id:${device.deviceNetworkId} installed."  
     
-    def index = getSegmentIndex(); 
-    log.debug("Installed segment index ${index}")    
+    def name = getSegmentId(); 
+    log.debug("Installed segment index ${name}")
     
-    // initialize device local data
-    device.updateDataValue("state","1")
-    device.updateDataValue("hue","0")        
-    device.updateDataValue("saturation","1")
-    device.updateDataValue("brightness", "0.8")
-    device.updateDataValue("effect","0")
-    device.updateDataValue("size", "0") 
-    device.updateDataValue("speed","1")    
+// fetch current settings from master database    
+    initialize()
+    updateDriverState()
 }
 
 def updated() {
-    log.info "Pixelblaze segment driver ${version()} id:${device.deviceNetworkId} updated."
+    log.info "Pixelblaze Segment Driver ${version()} id:${device.deviceNetworkId} updated."
     initialize()
 }
 
 def initialize() {
   state.version = version()
   
-  def eff = new groovy.json.JsonBuilder(lightEffects)    
-  sendEvent(name:"lightEffects",value: eff)    
+//  def eff = new groovy.json.JsonBuilder(lightEffects)    
+  sendEvent(name:"lightEffects",value: lightEffects)    
 }
 
 // handle command responses & status updates from bulb 
@@ -155,90 +185,65 @@ def parse(String description) {
  * Command handlers and associated helper functions
  */
  
-// called by parent when it gets an update from the pixelblaze 
-def updateState(dev) {
-  def tmpStr, tmpVal
-  
-// on/off state
-  tmpStr = (dev.getDataValue("state") == "1") ? "on" : "off"
-  sendEvent([name: "switch", value: tmpStr])  
-
-// color & brightness
-  tmpVal = Math.floor(100.0 * dev.getDataValue("hue").toFloat())
-  sendEvent([name: "hue", value: tmpVal])     
-  
-  tmpVal = Math.floor(100.0 * dev.getDataValue("saturation").toFloat())
-  sendEvent([name: "saturation", value: tmpVal])     
-  
-  tmpVal = Math.floor(100.0 * dev.getDataValue("brightness").toFloat())
-  sendEvent([name: "level", value: tmpVal])     
-  
-// effect
-  tmpVal = dev.getDataValue("effect")
-  sendEvent([name:"effectNumber", value: tmpVal])    
-  
-// segment size
-  tmpVal = dev.getDataValue("size")
-  sendEvent([name:"segmentSize", value: tmpVal])   
-
-// effect speed
-  tmpVal = Math.floor( 100 * dev.getDataValue("speed").toFloat())
-  sendEvent([name:"effectSpeed", value: tmpVal])   
- 
-}
- 
 // Switch commands 
 def on() {   
-    device.updateDataValue("state","1")
-    doPixelblazeCommand()
+    m = getSegmentData()
+    m["state"] = 1
+    saveSegmentData(m)
     
-   sendEvent([name: "switch", value: "on"])     
+    sendEvent([name: "switch", value: "on"])     
 }
 
 def off() {
-    device.updateDataValue("state","0")
-    doPixelblazeCommand()
+    m = getSegmentData()
+    m["state"] = 0
+    saveSegmentData(m)
     
     sendEvent([name: "switch", value: "off"]) 
 }
 
 // ColorControl commands
-// sends all the events necessary to keep the light's state
-
 def setColor(hsv) {
     logDebug("setColor(${hsv})") 
     
+    m = getSegmentData()
+    
     def n = hsv.hue / 100.0
-    device.updateDataValue("hue",n.toString())  
+    m["hue"] = n    
 
     n = hsv.saturation / 100.0
-    device.updateDataValue("saturation",n.toString())    
+    m["sat"] = n    
     
     n = hsv.level / 100.0
-    device.updateDataValue("brightness",n.toString())        
+    m["bri"] = n
     
-    doPixelblazeCommand()
-    
+    saveSegmentData(m)    
+        
     sendEvent([name: "hue", value: hsv.saturation])      
     sendEvent([name: "saturation", value: hsv.saturation])           
-    sendEvent([name: "level", value: lev])         
+    sendEvent([name: "level", value: hsv.level]) 
+    setGenericColorName(m)    
 }
 
 def setHue(h) {
     def n = h / 100.0
     
-    device.updateDataValue("hue",n.toString())    
-    doPixelblazeCommand()
+    m = getSegmentData()
+    m["hue"] = n
+    saveSegmentData(m)
     
-    sendEvent([name: "hue", value: h])  
+    sendEvent([name: "hue", value: h]) 
+    setGenericColorName(m)
 }
 
 def setSaturation(sat) {
     def n = sat / 100.0
-    device.updateDataValue("saturation",n.toString())    
-    doPixelblazeCommand()
+    m = getSegmentData()
+    m["sat"] = n
+    saveSegmentData(m)
     
-    sendEvent([name: "saturation", value: sat])       
+    sendEvent([name: "saturation", value: sat]) 
+    setGenericColorName(m)    
 }
 
 // SwitchLevel commands
@@ -246,9 +251,10 @@ def setSaturation(sat) {
 def setLevel(BigDecimal lev,BigDecimal duration=0) { 
     def b = lev / 255.0; // scale to 0-1 for Pixelblaze
     
-    device.updateDataValue("brightness",b.toString());   
-    doPixelblazeCommand()   
-    
+    m = getSegmentData()
+    m["bri"] = b
+    saveSegmentData(m)    
+     
     sendEvent([name: "level", value: lev]) 
 }
 
@@ -264,8 +270,11 @@ def setSize(BigDecimal s) {
     return
   }
   
-  device.updateDataValue("size",s.toString()) 
-  doPixelblazeCommand()
+   m = getSegmentData()
+   m["size"] = s
+   saveSegmentData(m)
+  
+   sendEvent([name: "segmentSize", value: s])    
 }
 
 // LightEffects commands
@@ -279,35 +288,79 @@ def setEffect(BigDecimal effectNo) {
     
   def name = lightEffects[val]
   
-  device.updateDataValue("effect",val.toString())
-  doPixelblazeCommand()
+  m = getSegmentData()
+  m["effect"] = val
+  saveSegmentData(m)  
+
   sendEvent([name:"effectNumber", value:val])
   sendEvent([name:"effectName", value:name])      
 }
 
 def setNextEffect() {
-  def i = device.getDataValue("effect").toFloat() 
+  m = getSegmentData()
+  def i = m["effect"]
   if (++i >= lightEffects.size()) i = 1
   
   setEffect(i) 
 }
       
 def setPreviousEffect() { 
-  def i = device.getDataValue("effect").toFloat() 
+  m = getSegmentData()
+  def i = m["effect"]
   if (--i < 0) i = ((lightEffects.size() - 1)) 
   
   setEffect(i)  
 }
 
 def setEffectSpeed(BigDecimal speed) {
+  // convert speed to 0..1 range for PB, so that the UI
+  // setting 100 == 0.5, which gives us a comfortable 
+  // default and room in both directions.    
   speed = (speed > 0) ? Math.min(speed.toFloat(),200.0) : 0
-  logDebug("setEffectSpeed to ${speed}")
-  
-  def deviceSpeed = Math.max(0.005,(200 - speed) / 100.0)
-  device.updateDataValue("speed",deviceSpeed.toString())
-  doPixelblazeCommand()  
+  def deviceSpeed = speed / 200
+   
+  m = getSegmentData()
+  m["speed"] = deviceSpeed
+  saveSegmentData(m)  
+    
+  logDebug("setEffectSpeed to ${speed}")    
   sendEvent([name: "effectSpeed", value: speed])     
 }
 
-
+// A very rough approximation, based on empirical observation
+// of some random WS2812 LEDs.  The exact color is 
+// a little erratic at the lowest brightness levels.
+def setGenericColorName(Map segData){
+    def colorName = "(not set)"
+    
+    if (segData["sat"] < 0.17) {
+      colorName = "White"
+    }
+    else {
+      hue = Math.floor(segData["hue"] * 100)
+      switch (hue.toInteger()){
+          case 0..2: colorName = "Red"
+              break
+          case 3..6: colorName = "Orange"
+              break
+          case 7..10: colorName = "Yellow"
+              break
+          case 11..13: colorName = "Chartreuse"
+              break
+          case 14..34: colorName = "Green"
+              break
+          case 35..68: colorName = "Blue"
+              break
+          case 69..73: colorName = "Violet"
+              break
+          case 74..83: colorName = "Magenta"
+              break
+          case 84..98: colorName = "Pink"
+              break
+          case 99..100: colorName = "Red"
+              break
+        }
+    }
+    sendEvent(name: "colorName", value: colorName)
+}
 
