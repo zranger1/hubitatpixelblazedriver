@@ -10,12 +10,13 @@
  *    A Pixelblaze controller w/addressable LED strip, and a pattern
  *    running on the controller that supports the "zone" protocol.
  *
- *    Date        Ver           Who       What
- *    ----        ---           ---       ----
- *    2020-03-30   0.1a          JEM       Created
- *    2020-07-22   1.1.1         JEM       Status update improvements
- *    2020-12-05   1.1.3         JEM       Hubitat Package Manager Support/resync version w/main driver
- *    2021-02-02   2.0.0         JEM       Segment data now stored in main hub Pixelblaze driver
+ *    Date        Ver      What
+ *    ----        ---      ----
+ *    2020-03-30   0.1a     Created
+ *    2020-07-22   1.1.1    Status update improvements
+ *    2020-12-05   1.1.3    Hubitat Package Manager Support/resync version w/main driver
+ *    2021-02-02   2.0.0    Segment data now stored in main hub Pixelblaze driver
+ *    2021-12-29   2.0.2    Sync version w/main driver - no change
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *  in compliance with the License. You may obtain a copy of the License at:
@@ -60,7 +61,7 @@ import groovy.transform.Field
    18:"Rainbow Down",
 ]
  
-def version() {"2.0.0"}
+def version() {"2.0.2"}
 def segmentDescriptorSize() { 7 }
 
 metadata {

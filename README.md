@@ -14,7 +14,11 @@ segments, each acting as an independent color bulb device with its own settings 
 
 It works with RuleMachine and the Maker API, so you can 
 coordinate the Pixelblaze with your other home automation devices.
-### What's New -- Version 2.0
+### What's New -- Version 2.0.2
+- **Expanded compatibility with Rule Machine and other automation tools** - Many more custom actions and attributes are now visible to RM.
+- **Read variables exported from Pixelblaze patterns** - use getVariable(var name) to read
+the variable from the Pixelblaze, then use the getVariableResult attribute to include the 
+variable in your HE automations.
 - **Support for color and speed controls in patterns.** - if a pattern includes hsv or rgb 
 color controls, the driver will detect them and will allow you adjust the pattern using
 the Hub's normal color bulb controls.  Similarly if the pattern includes a "Speed" slider,

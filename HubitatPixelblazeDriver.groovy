@@ -8,16 +8,17 @@
  *  Requirements:
  *    A Pixelblaze controller on the local LAN. 
  *
- *    Date        Ver     Who       What
- *    ----        ---     ---       ----
- *    2019-7-31   0.1     JEM       Created
- *    2019-7-31   0.11    JEM       added SwitchLevel capability, JSON bug fixes
- *    2019-12-19  1.0.0   JEM       lazy connection strategy, auto reconnect, 
- *                                  auto pattern list refresh, new on/off method, more...
- *    2020-02-05  1.0.1   JEM       support for latest Pixelblaze firmware features
- *    2020-07-22  1.1.1   JEM       support for dividing strip into multiple segments 
- *    2020-12-05  1.1.3   JEM       Hubitat Package Manager support
- *    2021-02-02  2.0.1   JEM       v2 release: Color control/enhanced multisegment support
+ *    Date        Ver     Who    What
+ *    ----        ---     ---    ----
+ *    2019-7-31   0.1     JEM    Created
+ *    2019-7-31   0.11    JEM    added SwitchLevel capability, JSON bug fixes
+ *    2019-12-19  1.0.0   JEM    lazy connection strategy, auto reconnect, 
+ *                               auto pattern list refresh, new on/off method, more...
+ *    2020-02-05  1.0.1   JEM    support for latest Pixelblaze firmware features
+ *    2020-07-22  1.1.1   JEM    support for dividing strip into multiple segments 
+ *    2020-12-05  1.1.3   JEM    Hubitat Package Manager support
+ *    2021-02-02  2.0.1   JEM    v2 release: Color control/enhanced multisegment support
+ *    2021-12-27  2.0.2   JEM    Expanded automation support & getVariable()/getVariableResult
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *  in compliance with the License. You may obtain a copy of the License at:
@@ -35,13 +36,14 @@ import hubitat.helper.HexUtils
 /**
  * SECTION TAG: Constants and configuration data
  */
-def version() {"2.0.1"}
+def version() {"2.0.2"}
 
 def PORT() { ":81" }            // Pixelblaze's websocket port. Must include colon
 def idleWaitTime() { 120}       // minimum seconds till connection goes idle
 def defaultBrightness() { 50 }  // use this brightness if we can't determine device state.  
 def maxSegments() { 12 }        // maximum number of segments allowed for multisegment setups
 def segmentDescriptorSize() { 7 }
+def waitForPixelblazeVars() { 100 }   // how long we give the Pixelblaze to respond to websocket requests (ms)
 
 def UNKNOWN() { "(unknown)" } 
 def EMPTYSTR() {""}
@@ -54,6 +56,7 @@ metadata {
                 namespace: "ZRanger1",
                 author: "ZRanger1(JEM)",
                 importUrl: "https://raw.githubusercontent.com/zranger1/hubitatpixelblazedriver/master/HubitatPixelblazeDriver.groovy") {
+        capability "Actuator"
         capability "Switch"
         capability "SwitchLevel"
         capability "Initialize"
@@ -78,6 +81,7 @@ metadata {
         command "setSequencerMode",[[name: "Mode*", type: "NUMBER", description: "(1 - Shuffle, 2 - Playlist)"]] 
         command "setSequenceTimer",[[name:"Seconds", type:"NUMBER"]]
         command "resetSegments"
+        command "getVariable",[[name: "Name*", type: "STRING"]]        
         command "getVariables"
         command "setIPAddress",["STRING"]        
 
@@ -87,7 +91,8 @@ metadata {
         attribute "effectNumber","NUMBER"
         attribute "ipAddress","STRING"
         attribute "sequencerMode","NUMBER"                
-        attribute "Speed", "NUMBER"              
+        attribute "Speed", "NUMBER" 
+        attribute "getVariableResult", "NUMBER"
     }
 }
 
@@ -525,11 +530,16 @@ def parseHardwareConfig(Map json) {
 }
 
 // process json-ized list of exported variables from the pixelblaze.
-def parseVariableList(Map json) {
+def parseVariableList(Map json, String frame) {
   def i, status, segList
-
+    
   if (json.containsKey("vars")) {
-    logDebug("    parse: variable list ${json.vars}")     
+    logDebug("    parse: variable list ${json.vars}")  
+      
+// save complete variable list so getVariable can access it later.  
+    logDebug("   parseVariableList frame: ${frame}")
+    device.updateDataValue("varList",frame);      
+      
 // multisegment support is off unless the pattern explicitly turns
 // it on.
     device.updateDataValue("segments","0")
@@ -565,8 +575,8 @@ def parseVariableList(Map json) {
     // Pixelblaze
     else if (json.vars.containsKey("__n_segments")){          
       device.updateDataValue("segments",json.vars.__n_segments.toString()) 
-    }   
-  }   
+    } 
+  }  
 }     
 
 // handle json text frames
@@ -588,7 +598,7 @@ def parseJsonFrame(String frame) {
       logDebug "parseJsonFrame: JsonSlurper returned null"
       return
     }     
-    parseVariableList(json)              
+    parseVariableList(json,frame)              
     parseHardwareConfig(json)
   }
   catch(e) {
@@ -734,11 +744,12 @@ def getPatternId(String name) {
 // the currently active pattern if available.
 def getControls() {
   id = device.getDataValue("activePatternId")
-  if (id.length() < 1) {
+  len = id ? id.length() : 0;
+  if (len < 1) {
     logDebug("getControls: Active pattern not available.")
-    return 
+  } else {
+    sendMsg("{ \"getControls\" : ${id} }")  
   }
-  sendMsg("{ \"getControls\" : ${id} }")  
 }
 
 // sets values for the specified Web UI control in the current pattern.
@@ -847,11 +858,50 @@ def getVariables() {
     sendMsg("{ \"getVars\" : true }")
 }
 
+// retrieves requested variable value after async websocket
+// query has returned (if all is working)
+def getVariableWorker(String varName) {
+  // get most recently saved list and look for the value we want. 
+  try {
+    String frame = device.getDataValue("varList");      
+    json = new groovy.json.JsonSlurper().parseText(frame)
+      
+    if (json == null){
+      logDebug "getVariable: JsonSlurper returned null"
+    }
+    else if (json?.vars?.containsKey(varName)) {
+      val = json.vars[varName];        
+    } 
+  }
+  catch(e) {
+    log.error("Exception while parsing json: ",e)
+    log.error frame
+  }  
+    
+  logDebug "getVariable ${varName} returned: ${val}"     
+  sendEvent([name: "getVariableResult", value: val, isStateChange: false])    
+}
+
+// retrieve the (numerical) value of a single export variable
+// from the active pattern and save it in the getVariableResult 
+// attribute
+def getVariable(String varName) {
+  String frame;
+    
+  // make sure the variable list is as up to date as possible
+  getVariables()
+  val = null;
+   
+  // elaborate way of faking Thread.sleep().  Why, hubitat, why?  
+  runInMillis(waitForPixelblazeVars(),'getVariableWorker',[data : varName]);
+  pauseExecution(waitForPixelblazeVars() + 20);
+}
+
 // Update the list of pattern names and IDs
 def getPatterns() {
     setLastPatternUpdate()
     sendMsg("{ \"listPrograms\" : true }")  
-    pauseExecution(100)    
+    pauseExecution(100);
 }
 
 def on() {       

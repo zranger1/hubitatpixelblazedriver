@@ -1,11 +1,11 @@
 {
   "packageName": "HubitatPixelblazeDriver",
   "author": "ZRanger1(JEM)",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "minimumHEVersion": "2.1.9",
   "documentationLink": "https://github.com/zranger1/hubitatpixelblazedriver/blob/master/README.md",
   "communityLink": "https://community.hubitat.com/t/release-pixelblaze-addressable-led-controller-driver-v1-00/20035",
-  "dateReleased": "2020-02-02",
+  "dateReleased": "2021-12-29",
   "drivers": [
     {
       "id": "e6eabcc3-4644-480d-8032-a0be9a707be3",
