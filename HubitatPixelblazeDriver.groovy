@@ -762,13 +762,13 @@ def setControl(String ctl_name, String values, String saveFlash="false") {
 // n should be in the range 0-100
 def setGlobalBrightness(BigDecimal n) {
     if (n > 0) {n = n / 100.0} // avoid weirdness around floating point zero
-    sendMsg("{ \"brightness\" : ${n} }" )
+    sendMsg("{ \"brightness\" : ${n}, \"save\": false }" )
 }
  
 def setActivePattern(name) {
    def pid = getPatternId(name)
    if (pid) {    
-     def str = "{ \"activeProgramId\" : \"${pid[0]}\" }"
+     def str = "{ \"activeProgramId\" : \"${pid[0]}\", \"save\": false }"
      sendMsg(str)  
      sendEvent([name: "activePattern", value: name]) 
      sendEvent([name:"effectName", value:name])               
