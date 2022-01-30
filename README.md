@@ -14,27 +14,25 @@ segments, each acting as an independent color bulb device with its own settings 
 
 It works with RuleMachine and the Maker API, so you can 
 coordinate the Pixelblaze with your other home automation devices.
-### What's New -- Version 2.0.2
-- **Expanded compatibility with Rule Machine and other automation tools** - Many more custom actions and attributes are now visible to RM.
-- **Read variables exported from Pixelblaze patterns** - use getVariable(var name) to read
-the variable from the Pixelblaze, then use the getVariableResult attribute to include the 
-variable in your HE automations.
-- **Support for color and speed controls in patterns.** - if a pattern includes hsv or rgb 
-color controls, the driver will detect them and will allow you adjust the pattern using
-the Hub's normal color bulb controls.  Similarly if the pattern includes a "Speed" slider,
-the driver will allow you to control the pattern's speed via the "SetEffectSpeed" command.  Note
-that not all patterns have color/speed controls.  
+### What's New -- Version 2.0.3
+**Minimizing flash RAM writes to extend Pixelblaze lifespan** - the Pixelblaze is based on the Espressif ESP32, which has 
+flash RAM rated for 100,000 cycles.  This is actually... not a lot for a device that is focused on programmability. Depending on how you use your Pixelblaze, it's possible to reach the limit in a finite amount
+of time and possibly "wear out" the device's memory.  This driver update focuses on minimizing the number of flash writes to reduce
+wear and tear.
 
-- **Greatly Improved Multisegment support** -- You no longer need to modify the pattern code to
-make your segment settings persistent.  Multisegment settings are now saved on the hub, and
-are loaded automatically when you load the new multisegmentforautomation pattern on your Pixelblaze. You can 
-adjust the number and size of segments (up to 12) from the driver. See the [multisegment setup guide](https://github.com/zranger1/PixelblazePatterns/blob/master/MULTISEG_HA.md)
-for details. 
+Settings to control this behavior are now on the "Preferences" section of the driver page.
 
-- **Updated sequencer functionality** - supports the new "shuffle" and "playlist" sequencer modes
-available in the latest Pixelblaze firmware.
+This change will affect how the Pixelblaze behaves after being power cycled.  Previously it always saved level and pattern settings almost immediately and if rebooted, would return to the last state set by either the Hubitat or by the Web UI.
 
-- **Many performance & reliability improvements** 
+The new default behavior is to disable all writes to flash from the Hubitat.  This means that on rebooting, the Pixelblaze will revert to the last pattern/brightness settings made via the Pixelblaze web UI.
+ 
+You can control this behavior with the **Allow settings to persist through power loss** switch in Preferences. It is **off** by default which, as mentioned, disables all flash writes.  Turning it **on** causes updated brightness and pattern settings to be saved only after the controls have been stable for some period of time.
+
+The wait period defaults to 8 seconds, and can be configured by entering a new value, in seconds, in the **Time (seconds) to wait after last control change before saving light settings** 
+field in Preferences.
+
+My oldest Pixelblaze has been in daily use since 2019 and shows no signs of quitting - this is not an issue that will affect most people for a very long time.  Still, it's worth making trying to ensure that all Pixelblazes lead long, productive and happy lives.
+ 
 ## To Install
 Set up your Pixelblaze.  Make note of its IP address.
 #### Install the Driver 

@@ -1,5 +1,27 @@
-# Change Log For hubitatpixelblazedriver 
+# Change Log History For HubitatPixelblazeDriver.groovy 
 See README.md for information on the latest version
+
+### What's New -- Version 2.0.2
+- **Expanded compatibility with Rule Machine and other automation tools** - Many more custom actions and attributes are now visible to RM.
+- **Read variables exported from Pixelblaze patterns** - use getVariable(var name) to read
+the variable from the Pixelblaze, then use the getVariableResult attribute to include the 
+variable in your HE automations.
+- **Support for color and speed controls in patterns.** - if a pattern includes hsv or rgb 
+color controls, the driver will detect them and will allow you adjust the pattern using
+the Hub's normal color bulb controls.  Similarly if the pattern includes a "Speed" slider,
+the driver will allow you to control the pattern's speed via the "SetEffectSpeed" command.  Note
+that not all patterns have color/speed controls.  
+
+- **Greatly Improved Multisegment support** -- You no longer need to modify the pattern code to
+make your segment settings persistent.  Multisegment settings are now saved on the hub, and
+are loaded automatically when you load the new multisegmentforautomation pattern on your Pixelblaze. You can 
+adjust the number and size of segments (up to 12) from the driver. See the [multisegment setup guide](https://github.com/zranger1/PixelblazePatterns/blob/master/MULTISEG_HA.md)
+for details. 
+
+- **Updated sequencer functionality** - supports the new "shuffle" and "playlist" sequencer modes
+available in the latest Pixelblaze firmware.
+
+- **Many performance & reliability improvements** 
 
 ### Version 1.1.1
 You can now subdivide an LED strip into multiple segments and control each one

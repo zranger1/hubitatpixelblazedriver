@@ -8,18 +8,19 @@
  *  Requirements:
  *    A Pixelblaze controller on the local LAN. 
  *
- *    Date        Ver     Who    What
- *    ----        ---     ---    ----
- *    2019-7-31   0.1     JEM    Created
- *    2019-7-31   0.11    JEM    added SwitchLevel capability, JSON bug fixes
- *    2019-12-19  1.0.0   JEM    lazy connection strategy, auto reconnect, 
- *                               auto pattern list refresh, new on/off method, more...
- *    2020-02-05  1.0.1   JEM    support for latest Pixelblaze firmware features
- *    2020-07-22  1.1.1   JEM    support for dividing strip into multiple segments 
- *    2020-12-05  1.1.3   JEM    Hubitat Package Manager support
- *    2021-02-02  2.0.1   JEM    v2 release: Color control/enhanced multisegment support
- *    2021-12-27  2.0.2   JEM    Expanded automation support & getVariable()/getVariableResult
- *
+ *    Date       Ver   Who  What
+ *    ----       ---   ---  ----
+ *    2019-7-31  0.1   JEM  Created
+ *    2019-7-31  0.11  JEM  added SwitchLevel capability, JSON bug fixes
+ *    2019-12-19 1.0.0 JEM  lazy connection strategy, auto reconnect, 
+ *                          auto pattern list refresh, new on/off method, more...
+ *    2020-02-05 1.0.1 JEM  support for latest Pixelblaze firmware features
+ *    2020-07-22 1.1.1 JEM  support for dividing strip into multiple segments 
+ *    2020-12-05 1.1.3 JEM  Hubitat Package Manager support
+ *    2021-02-02 2.0.1 JEM  v2 release: Color control/enhanced multisegment support
+ *    2021-12-27 2.0.2 JEM  Expanded automation support & getVariable()/getVariableResult
+ *    2022-01-29 2.0.3 SIMAP/JEM Greatly reduce automatic state saving to save flash RAM cycles.
+ * 
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *  in compliance with the License. You may obtain a copy of the License at:
  *
@@ -36,7 +37,7 @@ import hubitat.helper.HexUtils
 /**
  * SECTION TAG: Constants and configuration data
  */
-def version() {"2.0.2"}
+def version() {"2.0.3"}
 
 def PORT() { ":81" }            // Pixelblaze's websocket port. Must include colon
 def idleWaitTime() { 120}       // minimum seconds till connection goes idle
@@ -97,11 +98,11 @@ metadata {
 }
 
 preferences {
-    input("ip", "text", title: "IP Address", description: "IP address of Pixelblaze", required: true)
-
+    input("ip", "text", title: "IP Address", description: "IP address of Pixelblaze", required: true)   
+    input name: "persistSettings", type: "bool", title: "Allow settings to persist through power loss. (May cause increased flash RAM wear)", defaultValue : false   
+    input name: "saveDelay", type: "number", title: "Time (seconds) to wait after last control change before saving light settings", defaultValue: 8    
     input name: "multisegEnable", type: "bool", title: "Use multisegment pattern", defaultValue: false
-    input name: "numSegments", type: "number", title: "Number of segments (1-12)", defaultValue: 4
-   
+    input name: "numSegments", type: "number", title: "Number of segments (1-12)", defaultValue: 4    
     input name: "switchWithPatterns", type: "bool", title: "Use Patterns for On/Off", defaultValue : false   
     input("onPattern", "text", title: "On Pattern", description: "Name of pattern to use with \"On\" command", required : false)
     input("offPattern", "text", title: "Off Pattern", description: "Name of pattern to use with \"Off\" command", required : false)    
@@ -156,6 +157,7 @@ def initialize() {
   device.updateDataValue("pixelCount","0")
   device.updateDataValue("lastPatternUpdate","0")
   device.updateDataValue("patternNeedsInit","0") 
+  device.updateDataValue("lastControlChange","0")
   setLastNetCall()
     
 // set device state values shown in UI. It not only looks
@@ -202,6 +204,45 @@ def getLastPatternUpdate() {
     return Long.valueOf(s)
 }
 
+// flags are: 1 - changed global brightness, 2 - changed pattern
+def setLastControlChange(Long flags) {
+    // get current control change flags,add new flag and
+    // save
+    c = Long.valueOf(device.getDataValue("lastControlChange"))
+    c = c | flags
+
+    device.updateDataValue("lastControlChange",Long.toString(c))  
+
+    // schedule a save for some point in the future -- this will overwrite previously
+    // scheduled calls, so it will get rescheduled farther out every time the
+    // user moves a control, and will not be executed 'till the controls have been
+    // stable for a the specified amount of time.
+    if (persistSettings) {
+      runInMillis(saveDelay*1000,'saveChangedControls',[overwrite: true])        
+    }
+}
+
+// scheduled during UI control changes. Will eventually be called if brightness
+// or pattern change and the new state has been stable for 
+// "saveDelay" milliseconds
+def saveChangedControls() {
+    flags = Long.valueOf(device.getDataValue("lastControlChange"))
+    logDebug("saveChangedControls flags = ${flags}")       
+    
+    if (flags & 1) {
+      logDebug("  Saving global brightness")
+      setBrightnessWorker(device.currentValue("level"),"true");
+    } 
+    if (flags & 2) {
+      logDebug("  Saving current pattern")
+      id = getDataValue("activePatternId")
+      if (id) setPatternWorker(id,"true");
+    }
+    
+    // done - clear flags
+    device.updateDataValue("lastControlChange","0")      
+}
+
 // attempt to open websocket connection to pixelblaze, and schedule data updater
 // to run when the connection is successfully established
 def connectToPixelblaze() {  
@@ -224,7 +265,6 @@ def getCurrentPatternState() {
   getVariables()
   getControls()
   getConfig()
-
 }
 
 // initialization to be done after websocket connection is
@@ -759,20 +799,30 @@ def setControl(String ctl_name, String values, String saveFlash="false") {
   sendMsg(str);
 }
 
+def setBrightnessWorker(BigDecimal n, String saveFlash="false" ) {
+    if (n > 0) {n = n / 100.0} // avoid weirdness around floating point zero
+    sendMsg("{ \"brightness\" : ${n}, \"save\": ${saveFlash}}" )
+}
+
 // n should be in the range 0-100
 def setGlobalBrightness(BigDecimal n) {
-    if (n > 0) {n = n / 100.0} // avoid weirdness around floating point zero
-    sendMsg("{ \"brightness\" : ${n}, \"save\": false }" )
+    setBrightnessWorker(n);
+    setLastControlChange(1);
+}
+
+def setPatternWorker(pid, String saveFlash="false") {
+   def str = "{ \"activeProgramId\" : \"${pid}\", \"save\": ${saveFlash}}"
+   sendMsg(str)  
 }
  
 def setActivePattern(name) {
    def pid = getPatternId(name)
    if (pid) {    
-     def str = "{ \"activeProgramId\" : \"${pid[0]}\", \"save\": false }"
-     sendMsg(str)  
+     setPatternWorker(pid[0]);
      sendEvent([name: "activePattern", value: name]) 
      sendEvent([name:"effectName", value:name])               
-     sendEvent([name:"effectNumber", value:pid[1]])     
+     sendEvent([name:"effectNumber", value:pid[1]]) 
+     setLastControlChange(2);     
    }
 }
 
