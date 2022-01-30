@@ -20,6 +20,7 @@
  *    2021-02-02 2.0.1 JEM  v2 release: Color control/enhanced multisegment support
  *    2021-12-27 2.0.2 JEM  Expanded automation support & getVariable()/getVariableResult
  *    2022-01-29 2.0.3 SIMAP/JEM Greatly reduce automatic state saving to save flash RAM cycles.
+ *    2022-01-29 2.0.4 JEM  fix bug in on/off switch!
  * 
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *  in compliance with the License. You may obtain a copy of the License at:
@@ -37,7 +38,7 @@ import hubitat.helper.HexUtils
 /**
  * SECTION TAG: Constants and configuration data
  */
-def version() {"2.0.3"}
+def version() {"2.0.4"}
 
 def PORT() { ":81" }            // Pixelblaze's websocket port. Must include colon
 def idleWaitTime() { 120}       // minimum seconds till connection goes idle
@@ -231,7 +232,13 @@ def saveChangedControls() {
     
     if (flags & 1) {
       logDebug("  Saving global brightness")
-      setBrightnessWorker(device.currentValue("level"),"true");
+      if (device.currentValue("switch") == "on") {
+        setBrightnessWorker(device.currentValue("level"),"true");
+      }
+      else {
+      // TODO - account for pattern based switching
+        setBrightnessWorker(0,"true");      
+      }
     } 
     if (flags & 2) {
       logDebug("  Saving current pattern")

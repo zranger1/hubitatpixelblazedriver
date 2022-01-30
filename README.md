@@ -14,7 +14,7 @@ segments, each acting as an independent color bulb device with its own settings 
 
 It works with RuleMachine and the Maker API, so you can 
 coordinate the Pixelblaze with your other home automation devices.
-### What's New -- Version 2.0.3
+### What's New -- Version 2.0.4
 **Minimizing flash RAM writes to extend Pixelblaze lifespan** - the Pixelblaze is based on the Espressif ESP32, which has 
 flash RAM rated for 100,000 cycles.  This is actually... not a lot for a device that is focused on programmability. Depending on how you use your Pixelblaze, it's possible to reach the limit in a finite amount
 of time and possibly "wear out" the device's memory.  This driver update focuses on minimizing the number of flash writes to reduce

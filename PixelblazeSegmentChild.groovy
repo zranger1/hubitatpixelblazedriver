@@ -16,7 +16,7 @@
  *    2020-07-22   1.1.1    Status update improvements
  *    2020-12-05   1.1.3    Hubitat Package Manager Support/resync version w/main driver
  *    2021-02-02   2.0.0    Segment data now stored in main hub Pixelblaze driver
- *    2021-01-29   2.0.3    Sync version w/main driver - no change
+ *    2021-01-30   2.0.4    Sync version w/main driver - no change
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *  in compliance with the License. You may obtain a copy of the License at:
