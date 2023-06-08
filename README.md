@@ -14,6 +14,18 @@ segments, each acting as an independent color bulb device with its own settings 
 
 It works with RuleMachine and the Maker API, so you can 
 coordinate the Pixelblaze with your other home automation devices.
+
+### What's New -- Version 2.0.5
+You can now use the the Pixelblaze discovery service to get IP addresses for Pixelblaze devices by name on your LAN.  Static IP addresses are no longer required.
+To use this feature:
+- on the "Settings" tab of your Pixelblaze's web UI, enable Network Discovery
+- enable **Use Pixelblaze discovery service to find IP address** in the Preferences section of your device
+page on your hub.
+- set the Pixelblaze's "Device Name" on your hub to be the same as the name shown on the Settings tab of the web UI.
+- save your device preferences on the hub
+
+Your hub will now be able to find your Pixelblaze, even if its IP address changes.
+
 ### What's New -- Version 2.0.4
 **Minimizing flash RAM writes to extend Pixelblaze lifespan** - the Pixelblaze is based on the Espressif ESP32, which has 
 flash RAM rated for 100,000 cycles.  This is actually... not a lot for a device that is focused on programmability. Depending on how you use your Pixelblaze, it's possible to reach the limit in a finite amount
@@ -50,8 +62,17 @@ from this repository into the editor window and click the "SAVE" button.
 Create a new virtual device on your Hubitat, name and label it, and select 
 "Pixelblaze Controller" as the device type.  Save your new device.
 
-Click the new device on the Hubitat's "Devices" page, and enter your Pixelblaze's
-IP address (the port number is no longer required, but can optionally still be entered) in the provided field.
+Entering a static IP address is no longer required.  If you do wish use a static IP address, click the new device on the Hubitat's "Devices" page, and enter your Pixelblaze's IP address (the port number is no longer required, but can optionally still be entered) in the provided field.  
+
+To have the hub find your Pixelblaze by name:
+- on the "Settings" tab of your Pixelblaze's web UI, enable Network Discovery
+- enable **Use Pixelblaze discovery service to find IP address** in the Preferences section of your device
+page on your hub.
+- set the Pixelblaze's "Device Name" on your hub to be the same as the name shown on the Settings tab of the web UI.
+
+Press the "Save Preferences" button, and your Pixelblaze hub device will be ready to use.
+
+
 #### Legacy on/off switching method 
 *The ability to switch on/off by selecting patterns has been preserved for backward
 compatibiliby. It is now disabled by default when the driver is installed.*

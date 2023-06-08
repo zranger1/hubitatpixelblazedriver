@@ -21,6 +21,7 @@
  *    2021-12-27 2.0.2 JEM  Expanded automation support & getVariable()/getVariableResult
  *    2022-01-29 2.0.3 SIMAP/JEM Greatly reduce automatic state saving to save flash RAM cycles.
  *    2022-01-29 2.0.4 JEM  fix bug in on/off switch!
+ *    2023-06-08 2.0.5 JEM  use PB discovery service to get IP
  * 
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *  in compliance with the License. You may obtain a copy of the License at:
@@ -38,7 +39,7 @@ import hubitat.helper.HexUtils
 /**
  * SECTION TAG: Constants and configuration data
  */
-def version() {"2.0.4"}
+def version() {"2.0.5"}
 
 def PORT() { ":81" }            // Pixelblaze's websocket port. Must include colon
 def idleWaitTime() { 120}       // minimum seconds till connection goes idle
@@ -99,7 +100,8 @@ metadata {
 }
 
 preferences {
-    input("ip", "text", title: "IP Address", description: "IP address of Pixelblaze", required: true)   
+    input("ip", "text", title: "IP Address", description: "IP address of Pixelblaze", required: false)   
+    input name: "useDiscovery", type: "bool", title: "Use Pixelblaze discovery service to find IP address. (Requires internet connection)", defaultValue : false  
     input name: "persistSettings", type: "bool", title: "Allow settings to persist through power loss. (May cause increased flash RAM wear)", defaultValue : false   
     input name: "saveDelay", type: "number", title: "Time (seconds) to wait after last control change before saving light settings", defaultValue: 8    
     input name: "multisegEnable", type: "bool", title: "Use multisegment pattern", defaultValue: false
@@ -160,6 +162,7 @@ def initialize() {
   device.updateDataValue("patternNeedsInit","0") 
   device.updateDataValue("lastControlChange","0")
   setLastNetCall()
+  setLastOpenResult(false);
     
 // set device state values shown in UI. It not only looks
 // better, but dashboard tiles and other integrations 
@@ -194,6 +197,15 @@ def setLastNetCall() {
 def getLastNetCall() {
     s = device.getDataValue("lastSocketCall")
     return Long.valueOf(s)
+}
+
+def setLastOpenResult(boolean res) {
+	device.updateDataValue("lastOpenResult",(res == true) ? "true" : "false");	
+}
+
+boolean getLastOpenResult() {
+    s = device.getDataValue("lastOpenResult")
+    return (s.compareTo("true") == 0)
 }
 
 def setLastPatternUpdate() {
@@ -250,17 +262,61 @@ def saveChangedControls() {
     device.updateDataValue("lastControlChange","0")      
 }
 
+
+// sets the local IP address from the Pixelblaze discovery service
+// if it's available.
+String getIPFromDiscoveryData(resp) {
+    String name = device.getName().trim();
+    
+    // see if there's a device by this name in the discovery response packet
+    for (i = 0; i < resp.size(); i++) {
+        if (name.compareToIgnoreCase(resp[i]["name"]) == 0) {
+            logDebug("$name found at ${resp[i]["localIp"]}")
+            return resp[i]["localIp"];            
+        }
+    }
+    // if not found, log the problem and set us up to try again
+    // next time. 
+    logDebug("$name not found by discovery service.")
+    return null;
+}
+
 // attempt to open websocket connection to pixelblaze, and schedule data updater
 // to run when the connection is successfully established
-def connectToPixelblaze() {  
-  if (ip == null) {
-    logDebug("connectToPixelblaze: IP address not set.")
+def connectToPixelblaze() { 
+    
+  if (isConnected()) return;      
+    
+  // if we're using the Pixelblaze Discovery Service and we were unable
+  // to open the Pixelblaze using the previously set IP address,
+  // see if we can get a new address
+  boolean wasOpenedSuccessfully = getLastOpenResult()  
+  String newIP = null
+  setLastOpenResult(false)
+  if (useDiscovery == true && !wasOpenedSuccessfully) {      
+     try {
+         httpGet("http://discover.electromage.com/discover") { resp ->
+            if (resp.success) {
+              newIP = getIPFromDiscoveryData(resp.data);                
+              setIPAddress(newIP);
+            }
+            else logDebug("Discovery failed: ${resp.data}")
+        }
+    } catch (Exception e) {
+        log.warn "Couldn't reach discovery service: ${e.message}"
+    }
+  } 
+    
+  // if we don't have any address, either from discovery or previously saved,
+  // we can't open the Pixelblaze.  Log the problem and return
+  if (ip == null && newIP == null) {
+    logDebug("connectToPixelblaze: IP address not found.")
     return
   }
   
-  if (isConnected()) return;  
-  
-  pbOpenSocket();
+  // try to open the socket.
+  pbOpenSocket(newIP);
+    
   runInMillis(300,'awaitConnection',[data: "initializePostConnection"])       
 }
 
@@ -293,10 +349,12 @@ def initializePostConnection() {
 }
 
 // returns true if websocket connection is currently active, false otherwise
-def isConnected() {
+boolean isConnected() {
   try {
     status = device.currentValue("connectionStatus")
-    return status.startsWith(WS_CONNECTED())   
+    result = status.startsWith(WS_CONNECTED())      
+    if (result) setLastOpenResult(true)
+    return result;         
   }  
   catch(e) {
     // handles uninitialized connection status attribute
@@ -353,15 +411,22 @@ def connectionManager() {
 }
 
 // open websocket connection to Pixelblaze
-def pbOpenSocket() { 
+def pbOpenSocket(String newIP = null) { 
     try {
-      addr = (ip.split(":")[0]) + PORT()        
+      if (newIP == null) {
+        addr = (ip.split(":")[0]) + PORT()        
+      }
+      else {
+        addr = (newIP.split(":")[0]) + PORT()  
+      }
       sendEvent([name: "connectionStatus", value: WS_WAITING()])   
       interfaces.webSocket.connect("ws://${addr}")
       pauseExecution(250)
     }
     catch(e) {
-      log.error("Exception in pbOpenSocket ",e) 
+       if (ip != null) {
+         log.error("Exception in pbOpenSocket ",e) 
+       }
       sendEvent([name: "connectionStatus", value: WS_DISCONNECTED()])          
     }   
     setLastNetCall()  
@@ -385,7 +450,7 @@ def sendMsg(String s) {
 def webSocketStatus(String status) {
     logDebug("webSocketStatus: ${status}")
     
-    if (status.startsWith("status: open")) {    
+    if (status.startsWith("status: open")) {  
         sendEvent([name: "connectionStatus", value: WS_CONNECTED()]) 
     } 
     else if (status.startsWith("status: closing")) {
@@ -1105,7 +1170,7 @@ def setSpeed(BigDecimal speed) {
 // maker API can use this command to set IP address, enabling mDNS
 // resolution of Pixelblaze by name on remote system.
 def setIPAddress(String addr) {
-    logDebug("setIPAdress(${addr})")   
-    device.updateSetting("ip",addr)
+    logDebug("setIPAddress(${addr})")   
+    device.updateSetting("ip",(String) addr)
     sendEvent([name: "ipAddress", value: addr])  
 }  
